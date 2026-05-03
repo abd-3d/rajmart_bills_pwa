@@ -426,6 +426,100 @@ body {
   .invoice-grand-total { font-size: 15px; }
 }
 
+/* ── INSTALL BUTTON ── */
+.install-btn {
+  background: rgba(255,255,255,0.22) !important;
+  border-color: rgba(255,255,255,0.5) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  animation: installPulse 2.5s ease-in-out infinite;
+}
+@keyframes installPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.4); }
+  50%      { box-shadow: 0 0 0 5px rgba(255,255,255,0); }
+}
+.install-menu-btn {
+  color: var(--red) !important;
+  background: var(--red-bg) !important;
+  font-weight: 700 !important;
+  border-left: 3px solid var(--red);
+}
+
+/* ── LEDGER MOBILE CARDS ── */
+.ledger-cards { display: block; }
+.ledger-table-wrap { display: none; }
+
+.ledger-card {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.ledger-card:last-child { border-bottom: none; }
+.ledger-card.pay-card { background: #f6fdf9; }
+
+.lc-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.lc-left { flex: 1; min-width: 0; }
+.lc-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.lc-invno {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text);
+  margin-top: 1px;
+}
+.lc-customer {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lc-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+  /* clamp to 2 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lc-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+.lc-amount {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.lc-amount.debit  { color: var(--red); }
+.lc-amount.credit { color: var(--success); }
+.lc-balance {
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.lc-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
 /* ── MISC ── */
 .sidebar-hint { display: none; }
 .mobile-hint  { display: inline; }
@@ -474,6 +568,9 @@ body {
   .app-body { scrollbar-width: thin; }
 
   .main-content { padding: 20px 24px; }
+
+  .ledger-cards { display: none; }
+  .ledger-table-wrap { display: block; }
 
   /* Sidebar shown on desktop */
   .sidebar {

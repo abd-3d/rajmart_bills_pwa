@@ -25,16 +25,28 @@
 <!-- Capture PWA install prompt early -->
 <script>
   window._deferredInstallPrompt = null;
+  function _showInstallBtns() {
+    ['pwaInstallBtn','pwaInstallMenuBtn'].forEach(function(id){
+      var el = document.getElementById(id); if(el) el.style.display = 'inline-flex';
+    });
+  }
+  function _hideInstallBtns() {
+    ['pwaInstallBtn','pwaInstallMenuBtn'].forEach(function(id){
+      var el = document.getElementById(id); if(el) el.style.display = 'none';
+    });
+  }
   window.addEventListener('beforeinstallprompt', function(e) {
     e.preventDefault();
     window._deferredInstallPrompt = e;
-    var btn = document.getElementById('pwaInstallBtn');
-    if (btn) btn.style.display = 'inline-flex';
+    _showInstallBtns();
   });
   window.addEventListener('appinstalled', function() {
     window._deferredInstallPrompt = null;
-    var btn = document.getElementById('pwaInstallBtn');
-    if (btn) btn.style.display = 'none';
+    _hideInstallBtns();
+  });
+  // Re-check after DOM ready — prompt may have fired before elements existed
+  document.addEventListener('DOMContentLoaded', function() {
+    if (window._deferredInstallPrompt) _showInstallBtns();
   });
 </script>
 </head>
@@ -51,7 +63,7 @@
   <div class="topbar-right">
     <span id="saveIndicator" class="save-indicator"></span>
     <button id="driveTopBtn" onclick="driveSignIn()" title="Sync with Google Drive" class="topbar-icon-btn">☁️</button>
-    <button id="pwaInstallBtn" style="display:none;" class="topbar-icon-btn" onclick="pwaInstall()">📲</button>
+    <button id="pwaInstallBtn" style="display:none;" class="topbar-icon-btn install-btn" onclick="pwaInstall()">📲 Install App</button>
   </div>
 </div>
 
@@ -64,6 +76,7 @@
     <button class="mobile-nav-btn" id="mnav-products" onclick="showPage('products')">📦 Products</button>
     <button class="mobile-nav-btn" id="mnav-customers" onclick="showPage('customers')">👥 Customers</button>
     <div class="mobile-menu-divider"></div>
+    <button id="pwaInstallMenuBtn" class="mobile-nav-btn install-menu-btn" style="display:none;" onclick="pwaInstall()">📲 Install App</button>
     <div class="mobile-menu-actions">
       <button class="btn btn-secondary btn-sm" onclick="saveToFile()">💾 Backup JSON</button>
       <button class="btn btn-secondary btn-sm" onclick="document.getElementById('importFile').click()">📂 Import JSON</button>
@@ -294,7 +307,10 @@
         </div>
         <div class="ledger-balance" id="ledgerStats"></div>
         <div class="card" style="padding:0;overflow:hidden;">
-          <div class="table-scroll-wrap">
+          <!-- Mobile card view (shown on small screens) -->
+          <div id="ledgerCards" class="ledger-cards"></div>
+          <!-- Desktop table view (shown on large screens) -->
+          <div class="table-scroll-wrap ledger-table-wrap">
             <table class="data-table" id="ledgerTable">
               <thead>
                 <tr>
@@ -616,20 +632,6 @@
 
 <script src="app.js"></script>
 <script>
-// ===== PWA INSTALL =====
-function pwaInstall() {
-  const prompt = window._deferredInstallPrompt;
-  if (!prompt) return;
-  prompt.prompt();
-  prompt.userChoice.then(function(choice) {
-    if (choice.outcome === 'accepted') {
-      const btn = document.getElementById('pwaInstallBtn');
-      if (btn) btn.style.display = 'none';
-    }
-    window._deferredInstallPrompt = null;
-  });
-}
-
 // ===== SERVICE WORKER =====
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
@@ -649,18 +651,12 @@ if ('serviceWorker' in navigator) {
 
 // ===== MOBILE MENU =====
 function toggleMobileMenu() {
-  const menu = document.getElementById('mobileMenu');
+  const menu    = document.getElementById('mobileMenu');
   const overlay = document.getElementById('mobileMenuOverlay');
-  const btn = document.getElementById('hamburgerBtn');
+  const btn     = document.getElementById('hamburgerBtn');
   menu.classList.toggle('open');
   overlay.classList.toggle('open');
   btn.classList.toggle('open');
-}
-
-// Show install button if prompt already captured
-if (window._deferredInstallPrompt) {
-  const btn = document.getElementById('pwaInstallBtn');
-  if (btn) btn.style.display = 'inline-flex';
 }
 </script>
 </body>

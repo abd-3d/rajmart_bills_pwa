@@ -259,8 +259,26 @@ function openDrivePanel() {
 }
 
 // ============================
-// INVOICE NUMBER LOGIC
+// PWA INSTALL
 // ============================
+function pwaInstall() {
+  const prompt = window._deferredInstallPrompt;
+  if (!prompt) {
+    toast('Open in Chrome/Edge/Safari and use browser menu → Add to Home Screen', '');
+    return;
+  }
+  prompt.prompt();
+  prompt.userChoice.then(function(choice) {
+    if (choice.outcome === 'accepted') {
+      ['pwaInstallBtn','pwaInstallMenuBtn'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = 'none';
+      });
+    }
+    window._deferredInstallPrompt = null;
+  });
+}
+
+
 function getCustomerPrefix(cId) {
   const c = state.customers.find(x => x.id === cId);
   if (!c) return 'X';
@@ -1027,6 +1045,7 @@ function renderLedger() {
 
   if (!allRows.length) {
     tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">No entries yet. Create an invoice to get started.</div></div></td></tr>';
+    document.getElementById('ledgerCards').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">No entries yet.</div></div>';
     return;
   }
 
@@ -1037,6 +1056,7 @@ function renderLedger() {
   const balColor = b => Math.abs(b)<0.005?'#888':b<0?'#27ae60':'var(--red)';
   const balLabel = b => fmt(Math.abs(b))+(b<-0.005?' CR':'');
 
+  // ── Desktop table rows ──
   tbody.innerHTML = allRows.map(row => {
     if (row.type==='payment') {
       return `<tr style="background:#f0fff4;">
@@ -1069,6 +1089,36 @@ function renderLedger() {
         </td>
       </tr>`;
     }
+  }).join('');
+
+  // ── Mobile card rows ──
+  const cards = document.getElementById('ledgerCards');
+  cards.innerHTML = allRows.map(row => {
+    const isPay = row.type === 'payment';
+    const amtClass = isPay ? 'credit' : 'debit';
+    const amtLabel = isPay ? fmt(row.amount) : fmt(row.amount);
+    const itemsStr = (row.items||[]).map(i=>i.name+'×'+i.qty).join(', ');
+    const fullDesc = isPay ? row.desc : [row.desc, itemsStr].filter(Boolean).join(' — ');
+    const actionsHTML = isPay
+      ? `<button class="btn btn-danger btn-sm" onclick="deletePaymentRow(${row.id})">✕ Delete</button>`
+      : `<button class="btn btn-info btn-sm" onclick="openInvoicePreview(${row.id})">👁 View</button>
+         <button class="btn btn-secondary btn-sm" onclick="openEditEntryModal(${row.id})">✏️ Edit</button>
+         <button class="btn btn-danger btn-sm" onclick="deleteEntry(${row.id})">🗑 Del</button>`;
+    return `<div class="ledger-card ${isPay?'pay-card':''}">
+      <div class="lc-top">
+        <div class="lc-left">
+          <div class="lc-date">${row.date}${isPay?' · Payment':''}</div>
+          <div class="lc-invno">${isPay?'—':row.invoiceNo}</div>
+          <div class="lc-customer">${row.customerName}</div>
+          ${fullDesc?`<div class="lc-desc">${fullDesc}</div>`:''}
+        </div>
+        <div class="lc-right">
+          <div class="lc-amount ${amtClass}">${isPay?'+':''}${amtLabel}</div>
+          <div class="lc-balance" style="color:${balColor(row.balance)};">Bal: ${balLabel(row.balance)}</div>
+        </div>
+      </div>
+      <div class="lc-actions">${actionsHTML}</div>
+    </div>`;
   }).join('');
 }
 
