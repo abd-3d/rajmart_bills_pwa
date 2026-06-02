@@ -609,3 +609,86 @@ body {
 @media (display-mode: standalone) {
   .topbar { box-shadow: 0 1px 4px rgba(192,57,43,0.5); }
 }
+/* ============================================================
+   SELECTION MODE STYLES  (added v2.2)
+   ============================================================ */
+
+/* Selected row highlight */
+.selected-row td,
+tr.selected-row td { background: #fff8e1 !important; }
+.ledger-card.selected-row { background: #fff8e1 !important; border-left: 3px solid #f39c12; }
+
+/* Selection action bar */
+.selection-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff8e1;
+  border: 1.5px solid #f39c12;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Custom checkbox */
+.sel-checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+.sel-checkbox input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.sel-checkmark {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: white;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  position: relative;
+}
+.sel-checkbox input:checked ~ .sel-checkmark {
+  background: var(--red);
+  border-color: var(--red);
+}
+.sel-checkbox input:checked ~ .sel-checkmark::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 6px;
+  height: 10px;
+  border: 2px solid white;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+.sel-checkbox input:indeterminate ~ .sel-checkmark {
+  background: var(--red);
+  border-color: var(--red);
+}
+.sel-checkbox input:indeterminate ~ .sel-checkmark::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  width: 8px;
+  height: 2px;
+  background: white;
+  transform: none;
+  border: none;
+}
+
+/* Tappable card in selection mode */
+.ledger-card[onclick] { cursor: pointer; }
+.ledger-card[onclick]:active { background: #fef9e7 !important; }
