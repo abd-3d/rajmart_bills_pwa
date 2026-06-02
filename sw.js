@@ -1,5 +1,5 @@
 // Raj Bills – Service Worker  v1.0
-const CACHE = 'rajbills-v7';
+const CACHE = 'rajbills-v8';
 const STATIC = [
   './index.html',
   './styles.css',
