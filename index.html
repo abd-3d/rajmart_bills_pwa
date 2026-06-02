@@ -22,7 +22,6 @@
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="https://apis.google.com/js/api.js" onload="onGapiLoad()" async></script>
 
-<!-- Capture PWA install prompt early -->
 <script>
   window._deferredInstallPrompt = null;
   function _showInstallBtns() {
@@ -44,7 +43,6 @@
     window._deferredInstallPrompt = null;
     _hideInstallBtns();
   });
-  // Re-check after DOM ready — prompt may have fired before elements existed
   document.addEventListener('DOMContentLoaded', function() {
     if (window._deferredInstallPrompt) _showInstallBtns();
   });
@@ -200,8 +198,6 @@
 
       <!-- INVOICE PAGE -->
       <div class="page active" id="page-invoice">
-
-        <!-- Mobile customer selector -->
         <div class="mobile-customer-bar" id="mobileCustomerBar">
           <select id="mobileCustomerSelect" onchange="selectCustomerById(this.value)" style="flex:1;">
             <option value="">— Select Customer —</option>
@@ -301,19 +297,42 @@
             <select id="ledgerCustomerFilter" onchange="renderLedger()" class="filter-select">
               <option value="">All Customers</option>
             </select>
+            <!-- NEW: Select Entries button -->
+            <button id="selModeBtn" class="btn btn-secondary btn-sm" onclick="toggleSelectionMode()">☑ Select Entries</button>
             <button class="btn btn-primary btn-sm" onclick="openPrintLedgerModal()">🖨 Print PDF</button>
             <button class="btn btn-secondary btn-sm" onclick="exportLedgerCSV()">⬇ CSV</button>
           </div>
         </div>
+
+        <!-- NEW: Selection action bar (shown when selection mode is active) -->
+        <div id="selectionActionBar" style="display:none;" class="selection-action-bar">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label class="sel-checkbox" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;">
+              <input type="checkbox" id="selAllCheckbox" onchange="selectAllVisible()">
+              <span class="sel-checkmark"></span>
+              Select All
+            </label>
+            <span id="selectionCount" style="font-size:12px;color:var(--text-muted);padding:3px 10px;background:white;border-radius:20px;border:1px solid var(--border);">No entries selected</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="selPrintBtn" class="btn btn-primary btn-sm" onclick="openPrintSelectedModal()" disabled>🖨 PDF Selected</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleSelectionMode()">✕ Cancel</button>
+          </div>
+        </div>
+
         <div class="ledger-balance" id="ledgerStats"></div>
         <div class="card" style="padding:0;overflow:hidden;">
-          <!-- Mobile card view (shown on small screens) -->
+          <!-- Mobile card view -->
           <div id="ledgerCards" class="ledger-cards"></div>
-          <!-- Desktop table view (shown on large screens) -->
+          <!-- Desktop table view -->
           <div class="table-scroll-wrap ledger-table-wrap">
             <table class="data-table" id="ledgerTable">
               <thead>
                 <tr>
+                  <!-- Selection checkbox column header (hidden by default, shown in selection mode) -->
+                  <th id="selAllTh" style="display:none;width:36px;padding:10px 6px;">
+                    <label class="sel-checkbox"><input type="checkbox" id="selAllCheckboxDesktop" onchange="selectAllVisible()"><span class="sel-checkmark"></span></label>
+                  </th>
                   <th>Date</th>
                   <th>Invoice No</th>
                   <th>Customer</th>
@@ -562,7 +581,7 @@
   </div>
 </div>
 
-<!-- PRINT LEDGER MODE MODAL -->
+<!-- PRINT LEDGER MODE MODAL (print all / filtered) -->
 <div class="modal-overlay" id="printLedgerModal">
   <div class="modal" style="width:460px;">
     <button class="modal-close" onclick="closeModal('printLedgerModal')">✕</button>
@@ -580,6 +599,39 @@
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('printLedgerModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== NEW: PRINT SELECTED ENTRIES MODAL ===== -->
+<div class="modal-overlay" id="printSelectedLedgerModal">
+  <div class="modal" style="width:480px;">
+    <button class="modal-close" onclick="closeModal('printSelectedLedgerModal')">✕</button>
+    <div class="modal-title">🖨 PDF – Selected Entries</div>
+
+    <!-- Summary pill -->
+    <div style="background:var(--red-bg);border:1.5px solid var(--red-light);border-radius:8px;padding:12px 14px;margin-bottom:18px;display:flex;align-items:center;gap:10px;">
+      <span style="font-size:20px;">📋</span>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--red);">Ready to print</div>
+        <div id="selPrintSummary" style="font-size:12px;color:var(--text-muted);margin-top:2px;">0 entries selected</div>
+      </div>
+    </div>
+
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">How should the <strong>Balance</strong> column be calculated for the selected entries?</p>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:6px;">
+      <button class="btn btn-primary" onclick="printSelectedLedger('continuous')" style="text-align:left;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;">
+        <span style="font-size:14px;">📒 Continuous Ledger</span>
+        <span style="font-size:11px;font-weight:400;opacity:0.85;">Balance includes all history before the selected entries — shows the real running balance.</span>
+      </button>
+      <button class="btn btn-secondary" onclick="printSelectedLedger('standalone')" style="text-align:left;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;">
+        <span style="font-size:14px;">📄 Standalone</span>
+        <span style="font-size:11px;font-weight:400;opacity:0.75;">Balance starts from ₹0 for the selected entries only — useful for sharing a statement of specific transactions.</span>
+      </button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('printSelectedLedgerModal')">Cancel</button>
     </div>
   </div>
 </div>
@@ -632,7 +684,6 @@
 
 <script src="app.js"></script>
 <script>
-// ===== SERVICE WORKER =====
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('./sw.js')
@@ -649,7 +700,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// ===== MOBILE MENU =====
 function toggleMobileMenu() {
   const menu    = document.getElementById('mobileMenu');
   const overlay = document.getElementById('mobileMenuOverlay');
