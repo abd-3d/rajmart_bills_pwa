@@ -905,7 +905,7 @@ function _openPreview(html) {
 
 function doPrint() {
   document.getElementById('printArea').innerHTML = window._previewHTML || '';
-  window.print();
+  setTimeout(() => window.print(), 120);
 }
 
 function printInvoiceFromLedger(id) { openInvoicePreview(id); }
@@ -1009,7 +1009,8 @@ function _doPrintLedger(mode, invoices, payments, custName, filter) {
       </div>
       <div class="print-footer">Mode: ${modeLabel} · Raj Bills · Generated ${new Date().toLocaleString('en-IN')}</div>
     </div>`;
-  window.print();
+  // Small delay so browser paints the DOM before opening print dialog
+  setTimeout(() => window.print(), 120);
 }
 
 // ============================
