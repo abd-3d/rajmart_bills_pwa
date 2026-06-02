@@ -1142,7 +1142,7 @@ function renderLedger() {
 
   // Checkbox cell for selection mode
   const selChkTd = (rowId) => _selectionMode
-    ? `<td style="width:36px;text-align:center;"><label class="sel-checkbox"><input type="checkbox" ${_selectedRows.has(String(rowId))?'checked':''} onchange="toggleRowSelection(${rowId})"><span class="sel-checkmark"></span></label></td>`
+    ? `<td style="width:36px;text-align:center;"><label class="sel-checkbox"><input type="checkbox" ${_selectedRows.has(String(rowId))?'checked':''} onchange="event.stopPropagation();toggleRowSelection(${row.id})"><span class="sel-checkmark"></span></label></td>`
     : '';
 
   // ── Desktop table rows ──
@@ -1186,12 +1186,14 @@ function renderLedger() {
   // Update select-all header checkbox
   const selAllTh = document.getElementById('selAllTh');
   if (selAllTh) selAllTh.style.display = _selectionMode ? 'table-cell' : 'none';
-  const selAllChk = document.getElementById('selAllCheckbox');
-  if (selAllChk && _selectionMode) {
-    const allIds = allRows.map(r => String(r.id));
-    selAllChk.checked = allIds.length > 0 && allIds.every(id => _selectedRows.has(id));
-    selAllChk.indeterminate = !selAllChk.checked && allIds.some(id => _selectedRows.has(id));
-  }
+  ['selAllCheckbox', 'selAllCheckboxDesktop'].forEach(chkId => {
+    const selAllChk = document.getElementById(chkId);
+    if (selAllChk && _selectionMode) {
+      const allIds = allRows.map(r => String(r.id));
+      selAllChk.checked = allIds.length > 0 && allIds.every(id => _selectedRows.has(id));
+      selAllChk.indeterminate = !selAllChk.checked && allIds.some(id => _selectedRows.has(id));
+    }
+  });
 
   // ── Mobile card rows ──
   const cards = document.getElementById('ledgerCards');
@@ -1209,7 +1211,7 @@ function renderLedger() {
       : `<button class="btn btn-info btn-sm" onclick="openInvoicePreview(${row.id})">👁 View</button>
          <button class="btn btn-secondary btn-sm" onclick="openEditEntryModal(${row.id})">✏️ Edit</button>
          <button class="btn btn-danger btn-sm" onclick="deleteEntry(${row.id})">🗑 Del</button>`;
-    return `<div class="ledger-card ${isPay?'pay-card':''} ${isSel?'selected-row':''}" data-id="${row.id}" onclick="${_selectionMode?`toggleRowSelection(${row.id})`:''}">
+    return `<div class="ledger-card ${isPay?'pay-card':''} ${isSel?'selected-row':''}"data-id="${row.id}" onclick="if(_selectionMode && event.target.type!=='checkbox'){toggleRowSelection(${row.id})}">
       <div class="lc-top">
         ${selCheckHTML}
         <div class="lc-left">
