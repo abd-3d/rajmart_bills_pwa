@@ -1151,8 +1151,9 @@ function renderLedger() {
   const balColor = b => Math.abs(b)<0.005?'#888':b<0?'#27ae60':'var(--red)';
   const balLabel = b => fmt(Math.abs(b))+(b<-0.005?' CR':'');
 
+  // THE FIX IS HERE: Changed toggleRowSelection(${row.id}) to toggleRowSelection(${rowId})
   const selChkTd = (rowId) => _selectionMode
-    ? `<td style="width:36px;text-align:center;"><label class="sel-checkbox"><input type="checkbox" ${_selectedRows.has(String(rowId))?'checked':''} onchange="event.stopPropagation();toggleRowSelection(${row.id})"><span class="sel-checkmark"></span></label></td>`
+    ? `<td style="width:36px;text-align:center;"><label class="sel-checkbox"><input type="checkbox" ${_selectedRows.has(String(rowId))?'checked':''} onchange="event.stopPropagation();toggleRowSelection(${rowId})"><span class="sel-checkmark"></span></label></td>`
     : '';
 
   tbody.innerHTML = allRows.map(row => {
