@@ -692,3 +692,25 @@ tr.selected-row td { background: #fff8e1 !important; }
 /* Tappable card in selection mode */
 .ledger-card[onclick] { cursor: pointer; }
 .ledger-card[onclick]:active { background: #fef9e7 !important; }
+
+/* ============================================================
+   PRINT FIX — ensure modals/overlays don't block print (v2.2)
+   ============================================================ */
+@media print {
+  .modal-overlay,
+  .modal,
+  .topbar,
+  .desktop-nav,
+  .bottom-tabs,
+  .sidebar,
+  .mobile-menu,
+  .mobile-menu-overlay,
+  .selection-action-bar,
+  .toast { display: none !important; }
+
+  #printArea {
+    display: block !important;
+    position: static !important;
+    visibility: visible !important;
+  }
+}
