@@ -1,7 +1,8 @@
 // ============================================================
-//  Raj Bills – Invoice & Ledger System  |  app.js  v2.0
+//  Raj Bills – Invoice & Ledger System  |  app.js  v2.1
 //  Features: PWA, Google Drive auto-backup, mobile-friendly,
 //  import/export, selectable ledger output (standalone / continuous)
+//  NEW v2.1: Selectable row PDF — pick any entries, then print
 // ============================================================
 
 // ============================
@@ -359,7 +360,6 @@ function save() {
   const data = JSON.stringify(state, null, 2);
   try {
     localStorage.setItem('rajbills', data);
-    // Show save indicator
     const el = document.getElementById('saveIndicator');
     if (el) { el.textContent = '✅ Saved'; el.style.opacity = '1'; setTimeout(() => { el.style.opacity = '0'; }, 2000); }
   } catch(e) { console.warn('localStorage save failed', e); }
@@ -370,7 +370,6 @@ function save() {
 }
 
 function load() {
-  // Try new key first, then old key for backward compat
   const d = localStorage.getItem('rajbills') || localStorage.getItem('rajmart');
   if (d) { try { state = JSON.parse(d); } catch(e) {} }
 }
@@ -410,20 +409,16 @@ function fmtK(n) {
 function showPage(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  // Desktop nav
   document.querySelectorAll('.desktop-nav button[id^="nav-"]').forEach(b => b.classList.remove('active'));
   const navBtn = document.getElementById('nav-' + page);
   if (navBtn) navBtn.classList.add('active');
-  // Mobile nav
   document.querySelectorAll('.mobile-nav-btn[id^="mnav-"]').forEach(b => b.classList.remove('active'));
   const mnavBtn = document.getElementById('mnav-' + page);
   if (mnavBtn) mnavBtn.classList.add('active');
-  // Bottom tabs
   const tabMap = { dashboard:'tab-dashboard', invoice:'tab-invoice', ledger:'tab-ledger', customers:'tab-customers', products:'tab-more' };
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   const tabId = tabMap[page];
   if (tabId) { const el = document.getElementById(tabId); if (el) el.classList.add('active'); }
-  // Close mobile menu if open
   const menu = document.getElementById('mobileMenu');
   if (menu && menu.classList.contains('open')) {
     menu.classList.remove('open');
@@ -652,7 +647,6 @@ function renderCustomerList() {
   const list = document.getElementById('customerList');
   const filtered = state.customers.filter(c => c.name.toLowerCase().includes(q));
 
-  // Update mobile select
   const mSel = document.getElementById('mobileCustomerSelect');
   if (mSel) {
     mSel.innerHTML = '<option value="">— Select Customer —</option>' +
@@ -686,7 +680,6 @@ function selectCustomerById(id) {
 function selectCustomer(id) {
   state.selectedCustomer = id;
 
-  // If ledger page active, filter by customer
   if (document.getElementById('page-ledger').classList.contains('active')) {
     document.getElementById('ledgerCustomerFilter').value = id;
     renderLedger(); renderCustomerList(); return;
@@ -707,7 +700,6 @@ function selectCustomer(id) {
   document.getElementById('invoiceDatePicker').value = new Date().toISOString().split('T')[0];
   document.getElementById('invoiceDescription').value = '';
 
-  // Update mobile select
   const mSel = document.getElementById('mobileCustomerSelect');
   if (mSel) mSel.value = id;
 
@@ -929,8 +921,32 @@ function printLedger(mode) {
   const invoices = filter ? state.ledger.filter(e => String(e.customerId)===String(filter)) : state.ledger;
   const payments = filter ? (state.payments||[]).filter(p => String(p.customerId)===String(filter)) : (state.payments||[]);
   const custName  = filter ? (state.customers.find(c => String(c.id)===filter)?.name||'Filtered') : 'All Customers';
+  _doPrintLedger(mode, invoices, payments, custName, filter);
+}
 
-  // Build all rows sorted by date
+// ── NEW: print only selected rows from selection mode ──
+function printSelectedLedger(mode) {
+  closeModal('printSelectedLedgerModal');
+  const selectedIds = _getSelectedRowIds();
+  if (!selectedIds.length) { toast('No entries selected', 'error'); return; }
+
+  const filter = document.getElementById('ledgerCustomerFilter').value;
+  const custName = filter ? (state.customers.find(c => String(c.id)===filter)?.name||'Filtered') : 'Multiple Customers';
+
+  // Split selected IDs into invoices and payments
+  const invoices = [];
+  const payments = [];
+  selectedIds.forEach(sid => {
+    const inv = state.ledger.find(e => String(e.id) === String(sid));
+    if (inv) { invoices.push(inv); return; }
+    const pay = (state.payments||[]).find(p => String(p.id) === String(sid));
+    if (pay) payments.push(pay);
+  });
+
+  _doPrintLedger(mode, invoices, payments, custName, filter);
+}
+
+function _doPrintLedger(mode, invoices, payments, custName, filter) {
   const allRows = [];
   invoices.forEach(e => allRows.push({ type:'invoice', sortDate:parseDateIN(e.date), date:e.date, invoiceNo:e.invoiceNo, desc:[e.description,(e.items||[]).map(i=>i.name+'×'+i.qty).join(', ')].filter(Boolean).join(' — '), amount:e.total }));
   payments.forEach(p => {
@@ -939,10 +955,8 @@ function printLedger(mode) {
   });
   allRows.sort((a,b) => a.sortDate-b.sortDate || (a.type==='invoice'?-1:1));
 
-  // For continuous mode: get opening balance from entries BEFORE filter
   let openingBalance = 0;
   if (mode === 'continuous' && filter) {
-    // All ledger entries for this customer before the shown ones
     const allCustInvoices = state.ledger.filter(e => String(e.customerId)===String(filter));
     const allCustPayments = (state.payments||[]).filter(p => String(p.customerId)===String(filter));
     openingBalance = allCustInvoices.reduce((s,e)=>s+e.total,0) - allCustPayments.reduce((s,p)=>s+p.amount,0) - invoices.reduce((s,e)=>s+e.total,0) + payments.reduce((s,p)=>s+p.amount,0);
@@ -964,6 +978,8 @@ function printLedger(mode) {
   const modeLabel = mode === 'continuous' ? 'Continuous Ledger' : 'Standalone';
   const openingNote = mode === 'continuous' && openingBalance !== 0
     ? `<p style="font-size:11px;color:#b7950b;font-weight:700;">Opening balance: ₹${openingBalance.toFixed(2)}</p>` : '';
+  const selectionNote = invoices.length < state.ledger.filter(e => filter ? String(e.customerId)===String(filter) : true).length
+    ? `<p style="font-size:11px;color:#2980b9;font-weight:700;margin-bottom:4px;">Selected entries: ${invoices.length} invoice(s) + ${payments.length} payment(s)</p>` : '';
 
   document.getElementById('printArea').innerHTML = `
     <div class="print-ledger">
@@ -975,6 +991,7 @@ function printLedger(mode) {
           <div class="print-invoice-meta-line"><strong>Generated:</strong> ${new Date().toLocaleDateString('en-IN')}</div>
         </div>
       </div>
+      ${selectionNote}
       ${openingNote}
       <table class="print-table" style="width:100%;font-size:12px;margin-top:10px;">
         <thead><tr><th>Date</th><th>Invoice No</th><th>Description</th><th style="text-align:right;">Debit (₹)</th><th style="text-align:right;">Credit (₹)</th><th style="text-align:right;">Balance (₹)</th></tr></thead>
@@ -995,6 +1012,73 @@ function printLedger(mode) {
       <div class="print-footer">Mode: ${modeLabel} · Raj Bills · Generated ${new Date().toLocaleString('en-IN')}</div>
     </div>`;
   window.print();
+}
+
+// ============================
+// LEDGER PAGE — SELECTION MODE (NEW v2.1)
+// ============================
+let _selectionMode = false;
+let _selectedRows  = new Set(); // stores row IDs (invoice ids or payment ids as strings)
+
+function toggleSelectionMode() {
+  _selectionMode = !_selectionMode;
+  _selectedRows.clear();
+  renderLedger();
+  const btn = document.getElementById('selModeBtn');
+  if (btn) {
+    btn.textContent = _selectionMode ? '✕ Cancel Select' : '☑ Select Entries';
+    btn.classList.toggle('btn-primary', _selectionMode);
+    btn.classList.toggle('btn-secondary', !_selectionMode);
+  }
+  const bar = document.getElementById('selectionActionBar');
+  if (bar) bar.style.display = _selectionMode ? 'flex' : 'none';
+  updateSelectionCount();
+}
+
+function toggleRowSelection(id) {
+  const sid = String(id);
+  if (_selectedRows.has(sid)) _selectedRows.delete(sid);
+  else _selectedRows.add(sid);
+  updateSelectionCount();
+  // Toggle visual on the row
+  const card = document.querySelector(`.ledger-card[data-id="${sid}"]`);
+  if (card) card.classList.toggle('selected-row', _selectedRows.has(sid));
+  const row = document.querySelector(`tr[data-id="${sid}"]`);
+  if (row) row.classList.toggle('selected-row', _selectedRows.has(sid));
+}
+
+function selectAllVisible() {
+  const cards = document.querySelectorAll('.ledger-card[data-id]');
+  const rows  = document.querySelectorAll('#ledgerBody tr[data-id]');
+  const allIds = [...new Set([...cards, ...rows].map(el => el.getAttribute('data-id')))];
+  const allSelected = allIds.every(id => _selectedRows.has(id));
+  if (allSelected) {
+    allIds.forEach(id => _selectedRows.delete(id));
+  } else {
+    allIds.forEach(id => _selectedRows.add(id));
+  }
+  renderLedger();
+  updateSelectionCount();
+}
+
+function _getSelectedRowIds() { return [..._selectedRows]; }
+
+function updateSelectionCount() {
+  const count = _selectedRows.size;
+  const countEl = document.getElementById('selectionCount');
+  if (countEl) countEl.textContent = count > 0 ? `${count} entr${count===1?'y':'ies'} selected` : 'No entries selected';
+  const printBtn = document.getElementById('selPrintBtn');
+  if (printBtn) printBtn.disabled = count === 0;
+}
+
+function openPrintSelectedModal() {
+  if (_selectedRows.size === 0) { toast('Select at least one entry first', 'error'); return; }
+  // Show summary of what's selected
+  const invCount = [..._selectedRows].filter(id => state.ledger.find(e => String(e.id) === id)).length;
+  const payCount = _selectedRows.size - invCount;
+  const summEl = document.getElementById('selPrintSummary');
+  if (summEl) summEl.textContent = `${invCount} invoice(s) + ${payCount} payment(s) selected`;
+  openModal('printSelectedLedgerModal');
 }
 
 // ============================
@@ -1056,10 +1140,17 @@ function renderLedger() {
   const balColor = b => Math.abs(b)<0.005?'#888':b<0?'#27ae60':'var(--red)';
   const balLabel = b => fmt(Math.abs(b))+(b<-0.005?' CR':'');
 
+  // Checkbox cell for selection mode
+  const selChkTd = (rowId) => _selectionMode
+    ? `<td style="width:36px;text-align:center;"><label class="sel-checkbox"><input type="checkbox" ${_selectedRows.has(String(rowId))?'checked':''} onchange="toggleRowSelection(${rowId})"><span class="sel-checkmark"></span></label></td>`
+    : '';
+
   // ── Desktop table rows ──
   tbody.innerHTML = allRows.map(row => {
+    const isSel = _selectedRows.has(String(row.id));
     if (row.type==='payment') {
-      return `<tr style="background:#f0fff4;">
+      return `<tr style="background:#f0fff4;" data-id="${row.id}" class="${isSel?'selected-row':''}">
+        ${selChkTd(row.id)}
         <td><span class="mono" style="font-size:12px;">${row.date}</span></td>
         <td><span style="color:var(--text-muted);">—</span></td>
         <td style="font-size:12px;color:var(--text-muted);">${row.customerName}</td>
@@ -1072,7 +1163,8 @@ function renderLedger() {
     } else {
       const itemsStr = row.items.map(i=>i.name+'×'+i.qty).join(', ');
       const fullDesc = [row.desc, itemsStr].filter(Boolean).join(' — ');
-      return `<tr>
+      return `<tr data-id="${row.id}" class="${isSel?'selected-row':''}">
+        ${selChkTd(row.id)}
         <td><span class="mono" style="font-size:12px;">${row.date}</span></td>
         <td><span class="mono" style="font-weight:600;">${row.invoiceNo}</span></td>
         <td style="font-size:12px;">${row.customerName}</td>
@@ -1091,21 +1183,35 @@ function renderLedger() {
     }
   }).join('');
 
+  // Update select-all header checkbox
+  const selAllTh = document.getElementById('selAllTh');
+  if (selAllTh) selAllTh.style.display = _selectionMode ? 'table-cell' : 'none';
+  const selAllChk = document.getElementById('selAllCheckbox');
+  if (selAllChk && _selectionMode) {
+    const allIds = allRows.map(r => String(r.id));
+    selAllChk.checked = allIds.length > 0 && allIds.every(id => _selectedRows.has(id));
+    selAllChk.indeterminate = !selAllChk.checked && allIds.some(id => _selectedRows.has(id));
+  }
+
   // ── Mobile card rows ──
   const cards = document.getElementById('ledgerCards');
   cards.innerHTML = allRows.map(row => {
     const isPay = row.type === 'payment';
     const amtClass = isPay ? 'credit' : 'debit';
-    const amtLabel = isPay ? fmt(row.amount) : fmt(row.amount);
     const itemsStr = (row.items||[]).map(i=>i.name+'×'+i.qty).join(', ');
     const fullDesc = isPay ? row.desc : [row.desc, itemsStr].filter(Boolean).join(' — ');
+    const isSel = _selectedRows.has(String(row.id));
+    const selCheckHTML = _selectionMode
+      ? `<label class="sel-checkbox" style="margin-right:8px;margin-top:2px;flex-shrink:0;"><input type="checkbox" ${isSel?'checked':''} onchange="toggleRowSelection(${row.id})"><span class="sel-checkmark"></span></label>`
+      : '';
     const actionsHTML = isPay
       ? `<button class="btn btn-danger btn-sm" onclick="deletePaymentRow(${row.id})">✕ Delete</button>`
       : `<button class="btn btn-info btn-sm" onclick="openInvoicePreview(${row.id})">👁 View</button>
          <button class="btn btn-secondary btn-sm" onclick="openEditEntryModal(${row.id})">✏️ Edit</button>
          <button class="btn btn-danger btn-sm" onclick="deleteEntry(${row.id})">🗑 Del</button>`;
-    return `<div class="ledger-card ${isPay?'pay-card':''}">
+    return `<div class="ledger-card ${isPay?'pay-card':''} ${isSel?'selected-row':''}" data-id="${row.id}" onclick="${_selectionMode?`toggleRowSelection(${row.id})`:''}">
       <div class="lc-top">
+        ${selCheckHTML}
         <div class="lc-left">
           <div class="lc-date">${row.date}${isPay?' · Payment':''}</div>
           <div class="lc-invno">${isPay?'—':row.invoiceNo}</div>
@@ -1113,11 +1219,11 @@ function renderLedger() {
           ${fullDesc?`<div class="lc-desc">${fullDesc}</div>`:''}
         </div>
         <div class="lc-right">
-          <div class="lc-amount ${amtClass}">${isPay?'+':''}${amtLabel}</div>
+          <div class="lc-amount ${amtClass}">${isPay?'+':''}${fmt(row.amount)}</div>
           <div class="lc-balance" style="color:${balColor(row.balance)};">Bal: ${balLabel(row.balance)}</div>
         </div>
       </div>
-      <div class="lc-actions">${actionsHTML}</div>
+      ${!_selectionMode ? `<div class="lc-actions">${actionsHTML}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1379,7 +1485,6 @@ function confirmDelete() {
 // ============================
 // INIT
 // ============================
-// Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', function(e) { if (e.target===this) this.classList.remove('open'); });
 });
@@ -1393,11 +1498,9 @@ document.getElementById('dashPeriod').addEventListener('change', function() {
   if (this.value!=='custom') renderDashboard();
 });
 
-// Auto-reconnect Drive on load
 window.addEventListener('load', function() {
   if (DRIVE_CLIENT_ID && _gapiReady) tryAutoReconnectDrive();
   else if (DRIVE_CLIENT_ID) {
-    // gapi might not be ready yet, wait
     setTimeout(() => { if (_gapiReady) tryAutoReconnectDrive(); }, 2000);
   }
 });
