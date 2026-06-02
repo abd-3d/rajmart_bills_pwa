@@ -1,8 +1,9 @@
 // ============================================================
-//  Raj Bills – Invoice & Ledger System  |  app.js  v2.1
+//  Raj Bills – Invoice & Ledger System  |  app.js  v2.2
 //  Features: PWA, Google Drive auto-backup, mobile-friendly,
 //  import/export, selectable ledger output (standalone / continuous)
-//  NEW v2.1: Selectable row PDF — pick any entries, then print
+//  v2.1: Selectable row PDF — pick any entries, then print
+//  v2.2: BUG FIX — selection mode double-fire & DOM sync issues
 // ============================================================
 
 // ============================
@@ -915,7 +916,6 @@ function printInvoiceFromLedger(id) { openInvoicePreview(id); }
 function openPrintLedgerModal() { openModal('printLedgerModal'); }
 
 function printLedger(mode) {
-  // mode: 'standalone' | 'continuous'
   closeModal('printLedgerModal');
   const filter = document.getElementById('ledgerCustomerFilter').value;
   const invoices = filter ? state.ledger.filter(e => String(e.customerId)===String(filter)) : state.ledger;
@@ -924,7 +924,6 @@ function printLedger(mode) {
   _doPrintLedger(mode, invoices, payments, custName, filter);
 }
 
-// ── NEW: print only selected rows from selection mode ──
 function printSelectedLedger(mode) {
   closeModal('printSelectedLedgerModal');
   const selectedIds = _getSelectedRowIds();
@@ -933,7 +932,6 @@ function printSelectedLedger(mode) {
   const filter = document.getElementById('ledgerCustomerFilter').value;
   const custName = filter ? (state.customers.find(c => String(c.id)===filter)?.name||'Filtered') : 'Multiple Customers';
 
-  // Split selected IDs into invoices and payments
   const invoices = [];
   const payments = [];
   selectedIds.forEach(sid => {
@@ -1015,10 +1013,15 @@ function _doPrintLedger(mode, invoices, payments, custName, filter) {
 }
 
 // ============================
-// LEDGER PAGE — SELECTION MODE (NEW v2.1)
+// LEDGER PAGE — SELECTION MODE
 // ============================
+// FIX v2.2: _selectedRows is the single source of truth.
+// toggleRowSelection() ONLY mutates _selectedRows + calls renderLedger().
+// Mobile card onclick is REMOVED — only checkbox onchange fires.
+// selectAllVisible() reads allRows from data, not DOM.
+
 let _selectionMode = false;
-let _selectedRows  = new Set(); // stores row IDs (invoice ids or payment ids as strings)
+let _selectedRows  = new Set(); // stores row IDs as strings
 
 function toggleSelectionMode() {
   _selectionMode = !_selectionMode;
@@ -1035,23 +1038,30 @@ function toggleSelectionMode() {
   updateSelectionCount();
 }
 
+// FIX: removed manual DOM patching — just toggle the set and re-render
 function toggleRowSelection(id) {
   const sid = String(id);
-  if (_selectedRows.has(sid)) _selectedRows.delete(sid);
-  else _selectedRows.add(sid);
+  if (_selectedRows.has(sid)) {
+    _selectedRows.delete(sid);
+  } else {
+    _selectedRows.add(sid);
+  }
+  // Re-render to keep all views in sync (both mobile cards and desktop table)
+  renderLedger();
   updateSelectionCount();
-  // Toggle visual on the row
-  const card = document.querySelector(`.ledger-card[data-id="${sid}"]`);
-  if (card) card.classList.toggle('selected-row', _selectedRows.has(sid));
-  const row = document.querySelector(`tr[data-id="${sid}"]`);
-  if (row) row.classList.toggle('selected-row', _selectedRows.has(sid));
 }
 
+// FIX: selectAllVisible now derives allIds from state data, not DOM queries
 function selectAllVisible() {
-  const cards = document.querySelectorAll('.ledger-card[data-id]');
-  const rows  = document.querySelectorAll('#ledgerBody tr[data-id]');
-  const allIds = [...new Set([...cards, ...rows].map(el => el.getAttribute('data-id')))];
-  const allSelected = allIds.every(id => _selectedRows.has(id));
+  const filter = document.getElementById('ledgerCustomerFilter').value;
+  const invoices = filter ? state.ledger.filter(e => String(e.customerId)===String(filter)) : state.ledger;
+  const payments = filter ? (state.payments||[]).filter(p => String(p.customerId)===String(filter)) : (state.payments||[]);
+  const allIds = [
+    ...invoices.map(e => String(e.id)),
+    ...payments.map(p => String(p.id))
+  ];
+
+  const allSelected = allIds.length > 0 && allIds.every(id => _selectedRows.has(id));
   if (allSelected) {
     allIds.forEach(id => _selectedRows.delete(id));
   } else {
@@ -1073,7 +1083,6 @@ function updateSelectionCount() {
 
 function openPrintSelectedModal() {
   if (_selectedRows.size === 0) { toast('Select at least one entry first', 'error'); return; }
-  // Show summary of what's selected
   const invCount = [..._selectedRows].filter(id => state.ledger.find(e => String(e.id) === id)).length;
   const payCount = _selectedRows.size - invCount;
   const summEl = document.getElementById('selPrintSummary');
@@ -1140,9 +1149,10 @@ function renderLedger() {
   const balColor = b => Math.abs(b)<0.005?'#888':b<0?'#27ae60':'var(--red)';
   const balLabel = b => fmt(Math.abs(b))+(b<-0.005?' CR':'');
 
-  // Checkbox cell for selection mode
+  // Checkbox cell: uses onchange only — no onclick on the row
+  // FIX: stopPropagation on the label prevents bubbling when clicking checkbox label itself
   const selChkTd = (rowId) => _selectionMode
-    ? `<td style="width:36px;text-align:center;"><label class="sel-checkbox"><input type="checkbox" ${_selectedRows.has(String(rowId))?'checked':''} onchange="toggleRowSelection(${rowId})"><span class="sel-checkmark"></span></label></td>`
+    ? `<td style="width:36px;text-align:center;" onclick="event.stopPropagation()"><label class="sel-checkbox"><input type="checkbox" ${_selectedRows.has(String(rowId))?'checked':''} onchange="toggleRowSelection(${rowId})"><span class="sel-checkmark"></span></label></td>`
     : '';
 
   // ── Desktop table rows ──
@@ -1183,17 +1193,27 @@ function renderLedger() {
     }
   }).join('');
 
-  // Update select-all header checkbox
+  // Update select-all header checkboxes
   const selAllTh = document.getElementById('selAllTh');
   if (selAllTh) selAllTh.style.display = _selectionMode ? 'table-cell' : 'none';
-  const selAllChk = document.getElementById('selAllCheckbox');
-  if (selAllChk && _selectionMode) {
-    const allIds = allRows.map(r => String(r.id));
-    selAllChk.checked = allIds.length > 0 && allIds.every(id => _selectedRows.has(id));
-    selAllChk.indeterminate = !selAllChk.checked && allIds.some(id => _selectedRows.has(id));
-  }
+
+  const allIds = allRows.map(r => String(r.id));
+  const allSelected = allIds.length > 0 && allIds.every(id => _selectedRows.has(id));
+  const someSelected = allIds.some(id => _selectedRows.has(id));
+
+  // Sync both select-all checkboxes (mobile action bar + desktop header)
+  ['selAllCheckbox', 'selAllCheckboxDesktop'].forEach(cbId => {
+    const cb = document.getElementById(cbId);
+    if (cb && _selectionMode) {
+      cb.checked = allSelected;
+      cb.indeterminate = !allSelected && someSelected;
+    }
+  });
 
   // ── Mobile card rows ──
+  // FIX: card onclick is REMOVED. Only the checkbox onchange drives selection.
+  //      A separate tap-zone covers the whole card but uses stopPropagation on
+  //      the checkbox wrapper to prevent double-fire.
   const cards = document.getElementById('ledgerCards');
   cards.innerHTML = allRows.map(row => {
     const isPay = row.type === 'payment';
@@ -1201,15 +1221,27 @@ function renderLedger() {
     const itemsStr = (row.items||[]).map(i=>i.name+'×'+i.qty).join(', ');
     const fullDesc = isPay ? row.desc : [row.desc, itemsStr].filter(Boolean).join(' — ');
     const isSel = _selectedRows.has(String(row.id));
+
+    // FIX: In selection mode, the whole card is a tap target → toggleRowSelection.
+    //      The checkbox wrapper stops propagation so the onchange doesn't double-fire.
+    const cardOnclick = _selectionMode ? `onclick="toggleRowSelection(${row.id})"` : '';
+
     const selCheckHTML = _selectionMode
-      ? `<label class="sel-checkbox" style="margin-right:8px;margin-top:2px;flex-shrink:0;"><input type="checkbox" ${isSel?'checked':''} onchange="toggleRowSelection(${row.id})"><span class="sel-checkmark"></span></label>`
+      ? `<span class="sel-checkbox-wrap" onclick="event.stopPropagation()" style="margin-right:8px;margin-top:2px;flex-shrink:0;display:inline-flex;">
+           <label class="sel-checkbox">
+             <input type="checkbox" ${isSel?'checked':''} onchange="toggleRowSelection(${row.id})">
+             <span class="sel-checkmark"></span>
+           </label>
+         </span>`
       : '';
+
     const actionsHTML = isPay
       ? `<button class="btn btn-danger btn-sm" onclick="deletePaymentRow(${row.id})">✕ Delete</button>`
       : `<button class="btn btn-info btn-sm" onclick="openInvoicePreview(${row.id})">👁 View</button>
          <button class="btn btn-secondary btn-sm" onclick="openEditEntryModal(${row.id})">✏️ Edit</button>
          <button class="btn btn-danger btn-sm" onclick="deleteEntry(${row.id})">🗑 Del</button>`;
-    return `<div class="ledger-card ${isPay?'pay-card':''} ${isSel?'selected-row':''}" data-id="${row.id}" onclick="${_selectionMode?`toggleRowSelection(${row.id})`:''}">
+
+    return `<div class="ledger-card ${isPay?'pay-card':''} ${isSel?'selected-row':''}" data-id="${row.id}" ${cardOnclick}>
       <div class="lc-top">
         ${selCheckHTML}
         <div class="lc-left">
@@ -1226,6 +1258,10 @@ function renderLedger() {
       ${!_selectionMode ? `<div class="lc-actions">${actionsHTML}</div>` : ''}
     </div>`;
   }).join('');
+
+  // Keep the action bar visible if we're in selection mode (renderLedger doesn't touch its display)
+  const bar = document.getElementById('selectionActionBar');
+  if (bar) bar.style.display = _selectionMode ? 'flex' : 'none';
 }
 
 function deletePaymentRow(id) {
