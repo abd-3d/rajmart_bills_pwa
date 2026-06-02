@@ -3,6 +3,7 @@
 //  Features: PWA, Google Drive auto-backup, mobile-friendly,
 //  import/export, selectable ledger output (standalone / continuous)
 //  NEW v2.1: Selectable row PDF — pick any entries, then print
+//  FIXED: Orphaned payment deletes, safe state loading, render optimization
 // ============================================================
 
 // ============================
@@ -237,7 +238,7 @@ async function driveDownload() {
     if (!res.ok) throw new Error('Download failed');
     const loaded = await res.json();
     if (loaded && Array.isArray(loaded.customers) && Array.isArray(loaded.products)) {
-      state = loaded;
+      state = Object.assign({}, state, loaded);
       save();
       toast('Data restored from Google Drive!', 'success');
       updateDriveStatus('Restored ✅');
@@ -333,7 +334,7 @@ function loadFromFile(event) {
     try {
       const imported = JSON.parse(e.target.result);
       if (imported && Array.isArray(imported.customers) && Array.isArray(imported.products)) {
-        state = imported;
+        state = Object.assign({}, state, imported);
         save(); toast('Data imported!', 'success');
         setTimeout(() => location.reload(), 800);
       } else { toast('Invalid data file format', 'error'); }
@@ -371,7 +372,15 @@ function save() {
 
 function load() {
   const d = localStorage.getItem('rajbills') || localStorage.getItem('rajmart');
-  if (d) { try { state = JSON.parse(d); } catch(e) {} }
+  if (d) { 
+    try { 
+      const parsed = JSON.parse(d); 
+      // Safe merge to ensure arrays/objects missing in older versions are instantiated
+      state = Object.assign({}, state, parsed);
+      if (!state.payments) state.payments = [];
+      if (!state.tempOverwrites) state.tempOverwrites = {};
+    } catch(e) {} 
+  }
 }
 load();
 
@@ -401,6 +410,12 @@ function fmtK(n) {
   if (n >= 100000) return '₹' + (n/100000).toFixed(1) + 'L';
   if (n >= 1000) return '₹' + (n/1000).toFixed(1) + 'K';
   return '₹' + parseFloat(n || 0).toFixed(0);
+}
+
+// Optimization Helper
+function refreshActiveViews() {
+  if (document.getElementById('page-dashboard')?.classList.contains('active')) renderDashboard();
+  if (document.getElementById('page-ledger')?.classList.contains('active')) renderLedger();
 }
 
 // ============================
@@ -631,12 +646,12 @@ function savePayment() {
   if (!amount||amount<=0){ toast('Enter a valid amount', 'error'); return; }
   state.payments.push({ id: uid(), customerId: parseInt(cid), amount, date, note, method });
   save(); toast('Payment recorded!', 'success');
-  updatePaymentInfo(); renderDashboard(); renderCustomerList();
+  updatePaymentInfo(); refreshActiveViews(); renderCustomerList();
 }
 
 function deletePayment(id) {
   state.payments = (state.payments||[]).filter(p => p.id !== id);
-  save(); updatePaymentInfo(); renderDashboard(); renderCustomerList(); toast('Payment removed');
+  save(); updatePaymentInfo(); refreshActiveViews(); renderCustomerList(); toast('Payment removed');
 }
 
 // ============================
@@ -924,7 +939,6 @@ function printLedger(mode) {
   _doPrintLedger(mode, invoices, payments, custName, filter);
 }
 
-// ── NEW: print only selected rows from selection mode ──
 function printSelectedLedger(mode) {
   closeModal('printSelectedLedgerModal');
   const selectedIds = _getSelectedRowIds();
@@ -933,7 +947,6 @@ function printSelectedLedger(mode) {
   const filter = document.getElementById('ledgerCustomerFilter').value;
   const custName = filter ? (state.customers.find(c => String(c.id)===filter)?.name||'Filtered') : 'Multiple Customers';
 
-  // Split selected IDs into invoices and payments
   const invoices = [];
   const payments = [];
   selectedIds.forEach(sid => {
@@ -1018,7 +1031,7 @@ function _doPrintLedger(mode, invoices, payments, custName, filter) {
 // LEDGER PAGE — SELECTION MODE (NEW v2.1)
 // ============================
 let _selectionMode = false;
-let _selectedRows  = new Set(); // stores row IDs (invoice ids or payment ids as strings)
+let _selectedRows  = new Set();
 
 function toggleSelectionMode() {
   _selectionMode = !_selectionMode;
@@ -1040,7 +1053,6 @@ function toggleRowSelection(id) {
   if (_selectedRows.has(sid)) _selectedRows.delete(sid);
   else _selectedRows.add(sid);
   updateSelectionCount();
-  // Toggle visual on the row
   const card = document.querySelector(`.ledger-card[data-id="${sid}"]`);
   if (card) card.classList.toggle('selected-row', _selectedRows.has(sid));
   const row = document.querySelector(`tr[data-id="${sid}"]`);
@@ -1073,7 +1085,6 @@ function updateSelectionCount() {
 
 function openPrintSelectedModal() {
   if (_selectedRows.size === 0) { toast('Select at least one entry first', 'error'); return; }
-  // Show summary of what's selected
   const invCount = [..._selectedRows].filter(id => state.ledger.find(e => String(e.id) === id)).length;
   const payCount = _selectedRows.size - invCount;
   const summEl = document.getElementById('selPrintSummary');
@@ -1140,12 +1151,10 @@ function renderLedger() {
   const balColor = b => Math.abs(b)<0.005?'#888':b<0?'#27ae60':'var(--red)';
   const balLabel = b => fmt(Math.abs(b))+(b<-0.005?' CR':'');
 
-  // Checkbox cell for selection mode
   const selChkTd = (rowId) => _selectionMode
     ? `<td style="width:36px;text-align:center;"><label class="sel-checkbox"><input type="checkbox" ${_selectedRows.has(String(rowId))?'checked':''} onchange="event.stopPropagation();toggleRowSelection(${row.id})"><span class="sel-checkmark"></span></label></td>`
     : '';
 
-  // ── Desktop table rows ──
   tbody.innerHTML = allRows.map(row => {
     const isSel = _selectedRows.has(String(row.id));
     if (row.type==='payment') {
@@ -1183,7 +1192,6 @@ function renderLedger() {
     }
   }).join('');
 
-  // Update select-all header checkbox
   const selAllTh = document.getElementById('selAllTh');
   if (selAllTh) selAllTh.style.display = _selectionMode ? 'table-cell' : 'none';
   ['selAllCheckbox', 'selAllCheckboxDesktop'].forEach(chkId => {
@@ -1195,7 +1203,6 @@ function renderLedger() {
     }
   });
 
-  // ── Mobile card rows ──
   const cards = document.getElementById('ledgerCards');
   cards.innerHTML = allRows.map(row => {
     const isPay = row.type === 'payment';
@@ -1232,11 +1239,11 @@ function renderLedger() {
 
 function deletePaymentRow(id) {
   state.payments = (state.payments||[]).filter(p=>String(p.id)!==String(id));
-  save(); renderLedger(); renderDashboard(); toast('Payment deleted');
+  save(); refreshActiveViews(); toast('Payment deleted');
 }
 
 // ============================
-// EDIT ENTRY MODAL
+// EDIT & DELETE ENTRY
 // ============================
 let _editItems = [];
 
@@ -1294,13 +1301,17 @@ function saveEditEntry() {
   e.description = document.getElementById('editEntryDesc').value.trim();
   e.items = _editItems.map(item => ({ name:item.name, qty:parseFloat(item.qty)||0, rate:parseFloat(item.rate)||0, amount:parseFloat(item.amount)||0 }));
   e.total = e.items.reduce((s,item)=>s+item.amount,0);
-  save(); closeModal('editEntryModal'); renderLedger(); renderDashboard();
+  save(); closeModal('editEntryModal'); refreshActiveViews();
   toast('Entry updated', 'success');
 }
 
 function deleteEntry(id) {
+  const e = state.ledger.find(x => x.id === id);
+  if (e && state.payments) {
+    state.payments = state.payments.filter(p => !(p.note && p.note.includes(`Initial Payment for ${e.invoiceNo}`)));
+  }
   state.ledger = state.ledger.filter(e => e.id !== id);
-  save(); renderLedger(); toast('Entry deleted');
+  save(); refreshActiveViews(); toast('Entry deleted');
 }
 
 function exportLedgerCSV() {
@@ -1487,6 +1498,14 @@ function confirmDelete() {
 // ============================
 // INIT
 // ============================
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window._deferredInstallPrompt = e;
+  // Optional: Unhide your install button if you have one set to display:none by default
+  const pwaBtn = document.getElementById('pwaInstallBtn');
+  if (pwaBtn) pwaBtn.style.display = 'inline-block';
+});
+
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', function(e) { if (e.target===this) this.classList.remove('open'); });
 });
